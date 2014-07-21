@@ -2,17 +2,20 @@ package net.floodlightcontroller.selena;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFSwitch;
-import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
-import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.core.annotations.LogMessageCategory;
 import net.floodlightcontroller.core.annotations.LogMessageDoc;
 import net.floodlightcontroller.core.annotations.LogMessageDocs;
@@ -21,27 +24,62 @@ import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.core.util.AppCookie;
+import net.floodlightcontroller.core.util.SingletonTask;
 import net.floodlightcontroller.counter.ICounterStoreService;
-import net.floodlightcontroller.packet.Ethernet;
+import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.routing.ForwardingBase;
 import net.floodlightcontroller.routing.IRoutingDecision;
 import net.floodlightcontroller.routing.IRoutingService;
-import net.floodlightcontroller.routing.Route;
+import net.floodlightcontroller.threadpool.IThreadPoolService;
 import net.floodlightcontroller.topology.ITopologyService;
+import net.floodlightcontroller.util.OFMessageDamper;
 
 import org.openflow.protocol.OFFlowMod;
 import org.openflow.protocol.OFMatch;
+import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFPacketIn;
-import org.openflow.protocol.OFPacketOut;
 import org.openflow.protocol.OFPort;
+import org.openflow.protocol.OFStatisticsReply;
+import org.openflow.protocol.OFStatisticsRequest;
 import org.openflow.protocol.OFType;
 import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionDataLayerDestination;
+import org.openflow.protocol.action.OFActionDataLayerSource;
+import org.openflow.protocol.action.OFActionNetworkLayerDestination;
+import org.openflow.protocol.action.OFActionNetworkLayerSource;
 import org.openflow.protocol.action.OFActionOutput;
+import org.openflow.protocol.statistics.OFFlowStatisticsReply;
+import org.openflow.protocol.statistics.OFPortStatisticsReply;
+import org.openflow.protocol.statistics.OFPortStatisticsRequest;
+import org.openflow.protocol.statistics.OFStatistics;
+import org.openflow.protocol.statistics.OFStatisticsType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@SuppressWarnings("unused")
 @LogMessageCategory("Flow Programming")
 public class Selena extends ForwardingBase implements IFloodlightModule {
+	
+	class ServerProperties {
+		public ServerProperties(byte[] mac, int ip) {
+			this.mac = mac; 
+			this.ip = ip;
+		}
+		byte[] mac;
+		int    ip;
+	}
+	
+	class PortStats {
+		long last_bytes;
+		long last_pkts;
+		long bytes;
+		long pkts;
+	}
+	
+	private int currServers = 2;
+	private ArrayList<ServerProperties> servers;
+	private HashMap<Short,PortStats> ports;
+	
     protected static Logger log = LoggerFactory.getLogger(Selena.class);
 
     @Override
@@ -52,301 +90,58 @@ public class Selena extends ForwardingBase implements IFloodlightModule {
                    recommendation=LogMessageDoc.REPORT_CONTROLLER_BUG)
     public Command processPacketInMessage(IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
                                           FloodlightContext cntx) {
-        Ethernet eth = IFloodlightProviderService.bcStore.get(cntx,
-                                   IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
-        // If a decision has been made we obey it
-        // otherwise we just forward
-        if (decision != null) {
-            if (log.isTraceEnabled()) {
-                log.trace("Forwaring decision={} was made for PacketIn={}",
-                        decision.getRoutingAction().toString(),
-                        pi);
-            }
-
-            switch(decision.getRoutingAction()) {
-                case NONE:
-                    // don't do anything
-                    return Command.CONTINUE;
-                case FORWARD_OR_FLOOD:
-                case FORWARD:
-                    doForwardFlow(sw, pi, cntx, false);
-                    return Command.CONTINUE;
-                case MULTICAST:
-                    // treat as broadcast
-                    doFlood(sw, pi, cntx);
-                    return Command.CONTINUE;
-                case DROP:
-                    doDropFlow(sw, pi, decision, cntx);
-                    return Command.CONTINUE;
-                default:
-                    log.error("Unexpected decision made for this packet-in={}",
-                            pi, decision.getRoutingAction());
-                    return Command.CONTINUE;
-            }
-        } else {
-            if (log.isTraceEnabled()) {
-                log.trace("No decision was made for PacketIn={}, forwarding",
-                        pi);
-            }
-
-            if (eth.isBroadcast() || eth.isMulticast()) {
-                // For now we treat multicast as broadcast
-                doFlood(sw, pi, cntx);
-            } else {
-                doForwardFlow(sw, pi, cntx, false);
-            }
-        }
-
-        return Command.CONTINUE;
-    }
-
-    @LogMessageDoc(level="ERROR",
-            message="Failure writing drop flow mod",
-            explanation="An I/O error occured while trying to write a " +
-            		"drop flow mod to a switch",
-            recommendation=LogMessageDoc.CHECK_SWITCH)
-    protected void doDropFlow(IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision, FloodlightContext cntx) {
-        // initialize match structure and populate it using the packet
         OFMatch match = new OFMatch();
         match.loadFromPacket(pi.getPacketData(), pi.getInPort());
-        if (decision.getWildcards() != null) {
-            match.setWildcards(decision.getWildcards());
-        }
-
-        // Create flow-mod based on packet-in and src-switch
+        
+        // Construct the action bit of the flow_mod list
+        ArrayList<OFAction> actions = new ArrayList<OFAction>();
+        if (pi.getInPort() == 1) {
+            // Choose uniformly at random a destination server
+            int ix = match.getTransportSource() % currServers;
+            ix = (ix < 0)?ix+currServers:ix;
+            ServerProperties s = servers.get(ix);
+            actions.add(new OFActionNetworkLayerDestination(s.ip));
+            actions.add(new OFActionDataLayerSource( new byte[]{(byte)0xfe,(byte)0xff,(byte)0xff,(byte)0x00,(byte)0x00, (byte)0x01} ));
+            actions.add(new OFActionDataLayerDestination(s.mac));
+            actions.add(new OFActionOutput((short)(ix+2)));
+        } else {
+            actions.add(new OFActionNetworkLayerSource(IPv4.toIPv4Address("192.168.1.1")));
+            actions.add(new OFActionDataLayerSource( new byte[]{(byte)0xfe,(byte)0xff,(byte)0xff,(byte)0x01,(byte)0x01, (byte)0x01}));
+            actions.add(new OFActionDataLayerDestination(new byte[]{(byte)0xfe,(byte)0xff,(byte)0xff,(byte)0x01,(byte)0x01, (byte)0x02}));
+            actions.add(new OFActionOutput((short)1));
+        } 
+        
+        // assemble flow_mod with action list 
         OFFlowMod fm =
                 (OFFlowMod) floodlightProvider.getOFMessageFactory()
                                               .getMessage(OFType.FLOW_MOD);
-        List<OFAction> actions = new ArrayList<OFAction>(); // Set no action to
-                                                            // drop
+        
+        int len = OFFlowMod.MINIMUM_LENGTH 
+      		  + (2*OFActionDataLayerSource.MINIMUM_LENGTH)
+      		  + OFActionNetworkLayerSource.MINIMUM_LENGTH 
+      		  + OFActionOutput.MINIMUM_LENGTH;
         long cookie = AppCookie.makeCookie(FORWARDING_APP_ID, 0);
-
         fm.setCookie(cookie)
           .setHardTimeout((short) 0)
-          .setIdleTimeout((short) 5)
-          .setBufferId(OFPacketOut.BUFFER_ID_NONE)
+          .setIdleTimeout((short) 10)
+          .setBufferId(pi.getBufferId())
           .setMatch(match)
           .setActions(actions)
-          .setLengthU(OFFlowMod.MINIMUM_LENGTH); // +OFActionOutput.MINIMUM_LENGTH);
+          .setLengthU(len);
+    	log.info("write drop flow-mod len={} sw={} match={}",
+    			new Object[] { len, sw, match});
 
         try {
-            if (log.isDebugEnabled()) {
-                log.debug("write drop flow-mod sw={} match={} flow-mod={}",
-                          new Object[] { sw, match, fm });
-            }
             messageDamper.write(sw, fm, cntx);
         } catch (IOException e) {
             log.error("Failure writing drop flow mod", e);
         }
+        
+        return Command.STOP;
     }
 
-    protected void doForwardFlow(IOFSwitch sw, OFPacketIn pi,
-                                 FloodlightContext cntx,
-                                 boolean requestFlowRemovedNotifn) {
-        OFMatch match = new OFMatch();
-        match.loadFromPacket(pi.getPacketData(), pi.getInPort());
-
-        // Check if we have the location of the destination
-        IDevice dstDevice =
-                IDeviceService.fcStore.
-                    get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
-
-        if (dstDevice != null) {
-            IDevice srcDevice =
-                    IDeviceService.fcStore.
-                        get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
-            Long srcIsland = topology.getL2DomainId(sw.getId());
-
-            if (srcDevice == null) {
-                log.debug("No device entry found for source device");
-                return;
-            }
-            if (srcIsland == null) {
-                log.debug("No openflow island found for source {}/{}",
-                          sw.getStringId(), pi.getInPort());
-                return;
-            }
-
-            // Validate that we have a destination known on the same island
-            // Validate that the source and destination are not on the same switchport
-            boolean on_same_island = false;
-            boolean on_same_if = false;
-            for (SwitchPort dstDap : dstDevice.getAttachmentPoints()) {
-                long dstSwDpid = dstDap.getSwitchDPID();
-                Long dstIsland = topology.getL2DomainId(dstSwDpid);
-                if ((dstIsland != null) && dstIsland.equals(srcIsland)) {
-                    on_same_island = true;
-                    if ((sw.getId() == dstSwDpid) &&
-                        (pi.getInPort() == dstDap.getPort())) {
-                        on_same_if = true;
-                    }
-                    break;
-                }
-            }
-
-            if (!on_same_island) {
-                // Flood since we don't know the dst device
-                if (log.isTraceEnabled()) {
-                    log.trace("No first hop island found for destination " +
-                              "device {}, Action = flooding", dstDevice);
-                }
-                doFlood(sw, pi, cntx);
-                return;
-            }
-
-            if (on_same_if) {
-                if (log.isTraceEnabled()) {
-                    log.trace("Both source and destination are on the same " +
-                              "switch/port {}/{}, Action = NOP",
-                              sw.toString(), pi.getInPort());
-                }
-                return;
-            }
-
-            // Install all the routes where both src and dst have attachment
-            // points.  Since the lists are stored in sorted order we can
-            // traverse the attachment points in O(m+n) time
-            SwitchPort[] srcDaps = srcDevice.getAttachmentPoints();
-            Arrays.sort(srcDaps, clusterIdComparator);
-            SwitchPort[] dstDaps = dstDevice.getAttachmentPoints();
-            Arrays.sort(dstDaps, clusterIdComparator);
-
-            int iSrcDaps = 0, iDstDaps = 0;
-
-            while ((iSrcDaps < srcDaps.length) && (iDstDaps < dstDaps.length)) {
-                SwitchPort srcDap = srcDaps[iSrcDaps];
-                SwitchPort dstDap = dstDaps[iDstDaps];
-
-                // srcCluster and dstCluster here cannot be null as
-                // every switch will be at least in its own L2 domain.
-                Long srcCluster =
-                        topology.getL2DomainId(srcDap.getSwitchDPID());
-                Long dstCluster =
-                        topology.getL2DomainId(dstDap.getSwitchDPID());
-
-                int srcVsDest = srcCluster.compareTo(dstCluster);
-                if (srcVsDest == 0) {
-                    if (!srcDap.equals(dstDap)) {
-                        Route route =
-                                routingEngine.getRoute(srcDap.getSwitchDPID(),
-                                                       (short)srcDap.getPort(),
-                                                       dstDap.getSwitchDPID(),
-                                                       (short)dstDap.getPort(), 0); //cookie = 0, i.e., default route
-                        if (route != null) {
-                            if (log.isTraceEnabled()) {
-                                log.trace("pushRoute match={} route={} " +
-                                          "destination={}:{}",
-                                          new Object[] {match, route,
-                                                        dstDap.getSwitchDPID(),
-                                                        dstDap.getPort()});
-                            }
-                            long cookie =
-                                    AppCookie.makeCookie(FORWARDING_APP_ID, 0);
-
-                            // if there is prior routing decision use wildcard
-                            Integer wildcard_hints = null;
-                            IRoutingDecision decision = null;
-                            if (cntx != null) {
-                                decision = IRoutingDecision.rtStore
-                                        .get(cntx,
-                                                IRoutingDecision.CONTEXT_DECISION);
-                            }
-                            if (decision != null) {
-                                wildcard_hints = decision.getWildcards();
-                            } else {
-                            	// L2 only wildcard if there is no prior route decision
-                                wildcard_hints = ((Integer) sw
-                                        .getAttribute(IOFSwitch.PROP_FASTWILDCARDS))
-                                        .intValue()
-                                        & ~OFMatch.OFPFW_IN_PORT
-                                        & ~OFMatch.OFPFW_DL_VLAN
-                                        & ~OFMatch.OFPFW_DL_SRC
-                                        & ~OFMatch.OFPFW_DL_DST
-                                        & ~OFMatch.OFPFW_NW_SRC_MASK
-                                        & ~OFMatch.OFPFW_NW_DST_MASK;
-                            }
-
-                            pushRoute(route, match, wildcard_hints, pi, sw.getId(), cookie,
-                                      cntx, requestFlowRemovedNotifn, false,
-                                      OFFlowMod.OFPFC_ADD);
-                        }
-                    }
-                    iSrcDaps++;
-                    iDstDaps++;
-                } else if (srcVsDest < 0) {
-                    iSrcDaps++;
-                } else {
-                    iDstDaps++;
-                }
-            }
-        } else {
-            // Flood since we don't know the dst device
-            doFlood(sw, pi, cntx);
-        }
-    }
-
-    /**
-     * Creates a OFPacketOut with the OFPacketIn data that is flooded on all ports unless
-     * the port is blocked, in which case the packet will be dropped.
-     * @param sw The switch that receives the OFPacketIn
-     * @param pi The OFPacketIn that came to the switch
-     * @param cntx The FloodlightContext associated with this OFPacketIn
-     */
-    @LogMessageDoc(level="ERROR",
-                   message="Failure writing PacketOut " +
-                   		"switch={switch} packet-in={packet-in} " +
-                   		"packet-out={packet-out}",
-                   explanation="An I/O error occured while writing a packet " +
-                   		"out message to the switch",
-                   recommendation=LogMessageDoc.CHECK_SWITCH)
-    protected void doFlood(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
-        if (topology.isIncomingBroadcastAllowed(sw.getId(),
-                                                pi.getInPort()) == false) {
-            if (log.isTraceEnabled()) {
-                log.trace("doFlood, drop broadcast packet, pi={}, " +
-                          "from a blocked port, srcSwitch=[{},{}], linkInfo={}",
-                          new Object[] {pi, sw.getId(),pi.getInPort()});
-            }
-            return;
-        }
-
-        // Set Action to flood
-        OFPacketOut po =
-            (OFPacketOut) floodlightProvider.getOFMessageFactory().getMessage(OFType.PACKET_OUT);
-        List<OFAction> actions = new ArrayList<OFAction>();
-        if (sw.hasAttribute(IOFSwitch.PROP_SUPPORTS_OFPP_FLOOD)) {
-            actions.add(new OFActionOutput(OFPort.OFPP_FLOOD.getValue(),
-                                           (short)0xFFFF));
-        } else {
-            actions.add(new OFActionOutput(OFPort.OFPP_ALL.getValue(),
-                                           (short)0xFFFF));
-        }
-        po.setActions(actions);
-        po.setActionsLength((short) OFActionOutput.MINIMUM_LENGTH);
-
-        // set buffer-id, in-port and packet-data based on packet-in
-        short poLength = (short)(po.getActionsLength() + OFPacketOut.MINIMUM_LENGTH);
-        po.setBufferId(OFPacketOut.BUFFER_ID_NONE);
-        po.setInPort(pi.getInPort());
-        byte[] packetData = pi.getPacketData();
-        poLength += packetData.length;
-        po.setPacketData(packetData);
-        po.setLength(poLength);
-
-        try {
-            if (log.isTraceEnabled()) {
-                log.trace("Writing flood PacketOut switch={} packet-in={} packet-out={}",
-                          new Object[] {sw, pi, po});
-            }
-            messageDamper.write(sw, po, cntx);
-        } catch (IOException e) {
-            log.error("Failure writing PacketOut switch={} packet-in={} packet-out={}",
-                    new Object[] {sw, pi, po}, e);
-        }
-
-        return;
-    }
+    
 
     // IFloodlightModule methods
 
@@ -372,9 +167,12 @@ public class Selena extends ForwardingBase implements IFloodlightModule {
         l.add(IRoutingService.class);
         l.add(ITopologyService.class);
         l.add(ICounterStoreService.class);
+        l.add(IThreadPoolService.class);
         return l;
     }
 
+    protected IThreadPoolService threadPool;
+    
     @Override
     @LogMessageDocs({
         @LogMessageDoc(level="WARN",
@@ -394,16 +192,85 @@ public class Selena extends ForwardingBase implements IFloodlightModule {
     })
     public void init(FloodlightModuleContext context) throws FloodlightModuleException {
         super.init();
-        log.error("XXXXXXXXX is this correct?????");
+        this.servers = new ArrayList<ServerProperties>();
+        servers.add(new ServerProperties(new byte[]{(byte)0xfe,(byte)0xff,(byte)0xff,(byte)0x00,(byte)0x00, (byte)0x02}, IPv4.toIPv4Address("192.168.1.2")) );
+        servers.add(new ServerProperties(new byte[]{(byte)0xfe,(byte)0xff,(byte)0xff,(byte)0x00,(byte)0x00, (byte)0x03}, IPv4.toIPv4Address("192.168.1.3")) );
+        servers.add(new ServerProperties(new byte[]{(byte)0xfe,(byte)0xff,(byte)0xff,(byte)0x00,(byte)0x00, (byte)0x04}, IPv4.toIPv4Address("192.168.1.4")) );
+        
+        this.ports = new HashMap<Short, PortStats>();
+        
         this.floodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
         this.deviceManager = context.getServiceImpl(IDeviceService.class);
         this.routingEngine = context.getServiceImpl(IRoutingService.class);
         this.topology = context.getServiceImpl(ITopologyService.class);
         this.counterStore = context.getServiceImpl(ICounterStoreService.class);
+        this.threadPool = context.getServiceImpl(IThreadPoolService.class);
+
     }
 
+
+    final static int STATS_REQ_DELAY = 10;
+    protected SingletonTask discoveryTask;
+    private int stats_count = 1000;
+    
     @Override
     public void startUp(FloodlightModuleContext context) {
         super.startUp();
+        
+    	ScheduledExecutorService ses = threadPool.getScheduledExecutor();
+
+		// List<IOFSwitch> sws = 
+        // messageDamper.write(sw, fm, context);
+   
+		// To be started by the first switch connection
+    	discoveryTask = new SingletonTask(ses, new Runnable() {
+    		@Override
+    		public void run() {
+                OFStatisticsRequest req = new OFStatisticsRequest();
+    			OFPortStatisticsRequest port = new OFPortStatisticsRequest();
+    			req.setXid(stats_count++);
+    			port.setPortNumber(OFPort.OFPP_NONE.getValue());
+    			req.setStatistics(Collections.singletonList((OFStatistics)port));
+    			req.setStatisticType(OFStatisticsType.PORT);
+    			req.setLength((short)(OFStatisticsRequest.MINIMUM_LENGTH +port.getLength()));
+
+    	        for (long sw : floodlightProvider.getAllSwitchDpids()) {
+    	            IOFSwitch iofSwitch = floodlightProvider.getSwitch(sw);
+    	            try {
+    	                // System.out.println(sw.getStatistics(req));
+    	                Future<List<OFStatistics>> future = iofSwitch.queryStatistics(req);
+    	                List<OFStatistics> values = future.get(500, TimeUnit.MILLISECONDS);
+    	                if (values != null) {
+    	                    for (OFStatistics value : values) {
+    	                    	OFPortStatisticsReply stats = (OFPortStatisticsReply)value;
+    	                    	if (ports.containsKey(new Short(stats.getPortNumber()))) {
+    	                    		PortStats st = ports.get(new Short(stats.getPortNumber()));
+    	                    		st.bytes = stats.getReceiveBytes() - st.last_bytes;
+    	                    		st.last_bytes = stats.getReceiveBytes();
+    	                    		st.pkts = stats.getreceivePackets() - st.last_pkts;
+    	                    		st.last_pkts = stats.getreceivePackets();
+    	                    		
+    	                    		float rate = (float)(8*st.bytes) / (float)(100*1e6);
+    	                    		// plog.error("Port {} rate {}", new Object[]{stats.getPortNumber(), rate});
+    	                    	} else {
+    	                    		PortStats st = new PortStats();
+    	                    		st.last_bytes = stats.getReceiveBytes();
+    	                    		st.last_pkts = stats.getreceivePackets();
+    	                    		ports.put(new Short(stats.getPortNumber()), st);
+    	                    	}
+    	                        
+    	                    }
+    	                }
+    	            } catch (Exception e) {
+    	                log.error("Failure retrieving statistics from switch " + sw, e);
+    	            }
+    	        }
+    			
+    			discoveryTask.reschedule(STATS_REQ_DELAY,
+    					TimeUnit.SECONDS);
+    		}
+
+        });
+        discoveryTask.reschedule(STATS_REQ_DELAY, TimeUnit.SECONDS);
     }
 }
