@@ -140,7 +140,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule {
 					act.add(new OFActionDataLayerDestination( 
 							new byte[] {(byte)0xfe, (byte)0xff, (byte)0xff, 
 									dst_pod, dst_swid, dst_host}));
-					act.add( new OFActionOutput((short)(3 - (int)dst_host)));
+					act.add( new OFActionOutput((short)((int)dst_host - 1)));
 				} else 
 					act.add( new OFActionOutput((short)3));
 
