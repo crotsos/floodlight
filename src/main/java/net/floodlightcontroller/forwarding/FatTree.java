@@ -12,16 +12,21 @@ import org.openflow.protocol.OFFlowMod;
 import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFPacketIn;
+import org.openflow.protocol.Wildcards;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionDataLayerDestination;
 import org.openflow.protocol.action.OFActionDataLayerSource;
 import org.openflow.protocol.action.OFActionOutput;
+import org.openflow.util.HexString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFSwitch;
+import net.floodlightcontroller.core.IOFSwitch.PortChangeType;
+import net.floodlightcontroller.core.IOFSwitchListener;
+import net.floodlightcontroller.core.ImmutablePort;
 import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
@@ -32,13 +37,14 @@ import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.routing.ForwardingBase;
 import net.floodlightcontroller.routing.IRoutingDecision;
 import net.floodlightcontroller.routing.IRoutingService;
+import net.floodlightcontroller.staticflowentry.IStaticFlowEntryPusherService;
 import net.floodlightcontroller.topology.ITopologyService;
 
 /**
  * @author cr409
  *
  */
-public class FatTree extends ForwardingBase implements IFloodlightModule {
+public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwitchListener {
     protected static Logger log = LoggerFactory.getLogger(FatTree.class);
 
 	/**
@@ -178,4 +184,82 @@ public class FatTree extends ForwardingBase implements IFloodlightModule {
 		return Command.STOP;
 	}
 
+	@Override
+	public void switchAdded(long switchId) {
+		// TODO Auto-generated method stub
+		OFMatch m = new OFMatch();
+		IOFSwitch sw = floodlightProvider.getSwitch(switchId);
+		
+		int length = (short)OFFlowMod.MINIMUM_LENGTH + OFActionOutput.MINIMUM_LENGTH;
+
+		ArrayList<OFAction> act = new ArrayList<OFAction>();
+		act.add( new OFActionOutput(org.openflow.protocol.OFPort.OFPP_LOCAL.getValue()));
+		
+		m.setWildcards(Wildcards.ofMatches(Wildcards.Flag.IN_PORT));	
+		m.setInputPort((short)5);
+		
+		OFMessage fm = (new OFFlowMod())
+				.setIdleTimeout((short) 0)
+				.setHardTimeout((short) 0)
+				.setActions(act)
+				.setBufferId(-1)
+				.setCommand(OFFlowMod.OFPFC_ADD)
+				.setMatch(m)
+				.setLengthU(length);
+        try {
+            sw.write(fm, null);
+            sw.flush();
+        } catch (IOException e) {
+            log.error("Tried to write OFFlowMod to {} but failed: {}",
+                    HexString.toHexString(sw.getId()), e.getMessage());
+        }
+        
+		act = new ArrayList<OFAction>();
+		act.add( new OFActionOutput((short)5));
+		
+		m.setWildcards(Wildcards.ofMatches(Wildcards.Flag.IN_PORT));	
+		m.setInputPort(org.openflow.protocol.OFPort.OFPP_LOCAL.getValue());
+		
+		fm = (new OFFlowMod())
+				.setIdleTimeout((short) 0)
+				.setHardTimeout((short) 0)
+				.setActions(act)
+				.setBufferId(-1)
+				.setCommand(OFFlowMod.OFPFC_ADD)
+				.setMatch(m)
+				.setLengthU(length);    
+		try {
+			sw.write(fm, null);
+			sw.flush();
+		} catch (IOException e) {
+			log.error("Tried to write OFFlowMod to {} but failed: {}",
+					HexString.toHexString(sw.getId()), e.getMessage());
+		}
+
+	}
+
+	@Override
+	public void switchRemoved(long switchId) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void switchActivated(long switchId) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void switchPortChanged(long switchId, ImmutablePort port,
+			PortChangeType type) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void switchChanged(long switchId) {
+		// TODO Auto-generated method stub
+		
+	}
 }
