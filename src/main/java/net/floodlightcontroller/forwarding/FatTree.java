@@ -115,7 +115,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 	 * @see net.floodlightcontroller.routing.ForwardingBase#processPacketInMessage(net.floodlightcontroller.core.IOFSwitch, org.openflow.protocol.OFPacketIn, net.floodlightcontroller.routing.IRoutingDecision, net.floodlightcontroller.core.FloodlightContext)
 	 */
 	@Override
-	public net.floodlightcontroller.core.IListener.Command processPacketInMessage(
+	public Command processPacketInMessage(
 			IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
 			FloodlightContext cntx) {
 		String[] dpid = sw.getStringId().split(":");
@@ -130,6 +130,9 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 		String ip[] = IPv4.fromIPv4Address(m.getNetworkDestination()).split("\\.");
 		byte dst_pod = Byte.parseByte(ip[1]), dst_swid = Byte.parseByte(ip[2]),
 				dst_host = Byte.parseByte(ip[3]);
+		
+		if (m.getDataLayerType() == 0x8942 || m.getDataLayerType() == 0x4289)
+			return Command.CONTINUE;
 		
 		/* middle layer switches - pod = 0...3*/
 		if (pod >= 0 && pod < 4) {
