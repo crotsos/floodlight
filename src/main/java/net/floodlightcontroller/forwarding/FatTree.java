@@ -51,9 +51,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 	 * 
 	 */
 	public FatTree() {
-		
 		super();
-		
 	}
 
 	/* (non-Javadoc)

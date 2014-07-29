@@ -1122,19 +1122,19 @@ public abstract class OFSwitchBase implements IOFSwitch {
             return;
         // Delete all pre-existing flows
         log.info("Clearing all flows on switch {}", this);
-        OFMatch match = new OFMatch().setWildcards(OFMatch.OFPFW_ALL);
-        OFMessage fm = ((OFFlowMod) floodlightProvider.getOFMessageFactory()
-            .getMessage(OFType.FLOW_MOD))
-                .setMatch(match)
-            .setCommand(OFFlowMod.OFPFC_DELETE)
-            .setOutPort(OFPort.OFPP_NONE)
-            .setLength(U16.t(OFFlowMod.MINIMUM_LENGTH));
-        fm.setXid(getNextTransactionId());
+//        OFMatch match = new OFMatch().setWildcards(OFMatch.OFPFW_ALL);
+//        OFMessage fm = ((OFFlowMod) floodlightProvider.getOFMessageFactory()
+//            .getMessage(OFType.FLOW_MOD))
+//                .setMatch(match)
+//            .setCommand(OFFlowMod.OFPFC_DELETE)
+//            .setOutPort(OFPort.OFPP_NONE)
+//            .setLength(U16.t(OFFlowMod.MINIMUM_LENGTH));
+//        fm.setXid(getNextTransactionId());
         OFMessage barrierMsg = floodlightProvider.getOFMessageFactory().getMessage(
                 OFType.BARRIER_REQUEST);
         barrierMsg.setXid(getNextTransactionId());
         List<OFMessage> msglist = new ArrayList<OFMessage>(2);
-        msglist.add(fm);
+        //msglist.add(fm);
         msglist.add(barrierMsg);
         channel.write(msglist);
     }
