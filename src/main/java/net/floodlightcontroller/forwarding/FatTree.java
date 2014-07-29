@@ -33,7 +33,6 @@ import net.floodlightcontroller.routing.ForwardingBase;
 import net.floodlightcontroller.routing.IRoutingDecision;
 import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.topology.ITopologyService;
-import net.floodlightcontroller.util.OFMessageDamper;
 
 /**
  * @author cr409
