@@ -436,7 +436,7 @@ public class LinkDiscoveryManager implements IOFMessageListener,
     public void RemoveFromSuppressLLDPs(long sw, short port) {
         NodePortTuple npt = new NodePortTuple(sw, port);
         this.suppressLinkDiscovery.remove(npt);
-        discover(npt);
+        // discover(npt);
     }
 
     public boolean isShuttingDown() {
@@ -809,30 +809,30 @@ public class LinkDiscoveryManager implements IOFMessageListener,
      * @param sw
      * @param p
      */
-    private void processNewPort(long sw, short p) {
-        if (isLinkDiscoverySuppressed(sw, p)) {
-            // Do nothing as link discovery is suppressed.
-            return;
-        }
-
-        IOFSwitch iofSwitch = floodlightProvider.getSwitch(sw);
-        if (iofSwitch == null) return;
-
-        if (autoPortFastFeature && iofSwitch.isFastPort(p)) {
-            // Do nothing as the port is a fast port.
-            return;
-        }
-        NodePortTuple npt = new NodePortTuple(sw, p);
-        discover(sw, p);
-        // if it is not a fast port, add it to quarantine.
-        if (!iofSwitch.isFastPort(p)) {
-            addToQuarantineQueue(npt);
-        } else {
-            // Add to maintenance queue to ensure that BDDP packets
-            // are sent out.
-            addToMaintenanceQueue(npt);
-        }
-    }
+//    private void processNewPort(long sw, short p) {
+//        if (isLinkDiscoverySuppressed(sw, p)) {
+//            // Do nothing as link discovery is suppressed.
+//            return;
+//        }
+//
+//        IOFSwitch iofSwitch = floodlightProvider.getSwitch(sw);
+//        if (iofSwitch == null) return;
+//
+//        if (autoPortFastFeature && iofSwitch.isFastPort(p)) {
+//            // Do nothing as the port is a fast port.
+//            return;
+//        }
+//        NodePortTuple npt = new NodePortTuple(sw, p);
+//        discover(sw, p);
+//        // if it is not a fast port, add it to quarantine.
+//        if (!iofSwitch.isFastPort(p)) {
+//            addToQuarantineQueue(npt);
+//        } else {
+//            // Add to maintenance queue to ensure that BDDP packets
+//            // are sent out.
+//            addToMaintenanceQueue(npt);
+//        }
+//    }
 
     //***********************************
     //  Internal Methods - Discovery Related
@@ -882,37 +882,37 @@ public class LinkDiscoveryManager implements IOFMessageListener,
                                                                      portNumber));
     }
 
-    protected void discoverLinks() {
-
-        // timeout known links.
-        timeoutLinks();
-
-        // increment LLDP clock
-        lldpClock = (lldpClock + 1) % LLDP_TO_ALL_INTERVAL;
-
-        if (lldpClock == 0) {
-            if (log.isTraceEnabled())
-                log.trace("Sending LLDP out on all ports.");
-            discoverOnAllPorts();
-        }
-    }
+//    protected void discoverLinks() {
+//
+//        // timeout known links.
+//        timeoutLinks();
+//
+//        // increment LLDP clock
+//        lldpClock = (lldpClock + 1) % LLDP_TO_ALL_INTERVAL;
+//
+//        if (lldpClock == 0) {
+//            if (log.isTraceEnabled())
+//                log.trace("Sending LLDP out on all ports.");
+//            discoverOnAllPorts();
+//        }
+//    }
 
     /**
      * Quarantine Ports.
      */
-    protected class QuarantineWorker implements Runnable {
-        @Override
-        public void run() {
-            try {
-                processBDDPLists();
-            } catch (Exception e) {
-                log.error("Error in quarantine worker thread", e);
-            } finally {
-                bddpTask.reschedule(BDDP_TASK_INTERVAL,
-                                    TimeUnit.MILLISECONDS);
-            }
-        }
-    }
+//    protected class QuarantineWorker implements Runnable {
+//        @Override
+//        public void run() {
+//            try {
+//                processBDDPLists();
+//            } catch (Exception e) {
+//                log.error("Error in quarantine worker thread", e);
+//            } finally {
+//                bddpTask.reschedule(BDDP_TASK_INTERVAL,
+//                                    TimeUnit.MILLISECONDS);
+//            }
+//        }
+//    }
 
     /**
      * Add a switch port to the quarantine queue. Schedule the quarantine task
@@ -964,32 +964,32 @@ public class LinkDiscoveryManager implements IOFMessageListener,
      * switch ports are processed. Once the BDDP packets are sent out through
      * the switch ports, the ports are removed from the quarantine list.
      */
-    protected void processBDDPLists() {
-        int count = 0;
-        Set<NodePortTuple> nptList = new HashSet<NodePortTuple>();
-
-        while (count < BDDP_TASK_SIZE && quarantineQueue.peek() != null) {
-            NodePortTuple npt;
-            npt = quarantineQueue.remove();
-            sendDiscoveryMessage(npt.getNodeId(), npt.getPortId(), false,
-                                 false);
-            nptList.add(npt);
-            count++;
-        }
-
-        count = 0;
-        while (count < BDDP_TASK_SIZE && maintenanceQueue.peek() != null) {
-            NodePortTuple npt;
-            npt = maintenanceQueue.remove();
-            sendDiscoveryMessage(npt.getNodeId(), npt.getPortId(), false,
-                                 false);
-            count++;
-        }
-
-        for (NodePortTuple npt : nptList) {
-            generateSwitchPortStatusUpdate(npt.getNodeId(), npt.getPortId());
-        }
-    }
+//    protected void processBDDPLists() {
+//        int count = 0;
+//        Set<NodePortTuple> nptList = new HashSet<NodePortTuple>();
+//
+//        while (count < BDDP_TASK_SIZE && quarantineQueue.peek() != null) {
+//            NodePortTuple npt;
+//            npt = quarantineQueue.remove();
+//            sendDiscoveryMessage(npt.getNodeId(), npt.getPortId(), false,
+//                                 false);
+//            nptList.add(npt);
+//            count++;
+//        }
+//
+//        count = 0;
+//        while (count < BDDP_TASK_SIZE && maintenanceQueue.peek() != null) {
+//            NodePortTuple npt;
+//            npt = maintenanceQueue.remove();
+//            sendDiscoveryMessage(npt.getNodeId(), npt.getPortId(), false,
+//                                 false);
+//            count++;
+//        }
+//
+//        for (NodePortTuple npt : nptList) {
+//            generateSwitchPortStatusUpdate(npt.getNodeId(), npt.getPortId());
+//        }
+//    }
 
     private void generateSwitchPortStatusUpdate(long sw, short port) {
         UpdateOperation operation;
@@ -1012,13 +1012,13 @@ public class LinkDiscoveryManager implements IOFMessageListener,
         updates.add(new LDUpdate(sw, port, operation));
     }
 
-    protected void discover(NodePortTuple npt) {
-        discover(npt.getNodeId(), npt.getPortId());
-    }
+//    protected void discover(NodePortTuple npt) {
+//        discover(npt.getNodeId(), npt.getPortId());
+//    }
 
-    protected void discover(long sw, short port) {
-        sendDiscoveryMessage(sw, port, true, false);
-    }
+//    protected void discover(long sw, short port) {
+//        sendDiscoveryMessage(sw, port, true, false);
+//    }
 
     /**
      * Check if incoming discovery messages are enabled or not.
@@ -1169,36 +1169,36 @@ public class LinkDiscoveryManager implements IOFMessageListener,
     /**
      * Send LLDPs to all switch-ports
      */
-    protected void discoverOnAllPorts() {
-        if (log.isTraceEnabled()) {
-            log.trace("Sending LLDP packets out of all the enabled ports");
-        }
-        // Send standard LLDPs
-        for (long sw : floodlightProvider.getAllSwitchDpids()) {
-            IOFSwitch iofSwitch = floodlightProvider.getSwitch(sw);
-            if (iofSwitch == null) continue;
-            if (iofSwitch.getEnabledPorts() != null) {
-                for (ImmutablePort ofp : iofSwitch.getEnabledPorts()) {
-                    if (isLinkDiscoverySuppressed(sw, ofp.getPortNumber()))
-                                                                           continue;
-                    if (autoPortFastFeature
-                        && iofSwitch.isFastPort(ofp.getPortNumber()))
-                                                                     continue;
-
-                    // sends forward LLDP only non-fastports.
-                    sendDiscoveryMessage(sw, ofp.getPortNumber(), true,
-                                         false);
-
-                    // If the switch port is not already in the maintenance
-                    // queue, add it.
-                    NodePortTuple npt = new NodePortTuple(
-                                                          sw,
-                                                          ofp.getPortNumber());
-                    addToMaintenanceQueue(npt);
-                }
-            }
-        }
-    }
+//    protected void discoverOnAllPorts() {
+//        if (log.isTraceEnabled()) {
+//            log.trace("Sending LLDP packets out of all the enabled ports");
+//        }
+//        // Send standard LLDPs
+//        for (long sw : floodlightProvider.getAllSwitchDpids()) {
+//            IOFSwitch iofSwitch = floodlightProvider.getSwitch(sw);
+//            if (iofSwitch == null) continue;
+//            if (iofSwitch.getEnabledPorts() != null) {
+//                for (ImmutablePort ofp : iofSwitch.getEnabledPorts()) {
+//                    if (isLinkDiscoverySuppressed(sw, ofp.getPortNumber()))
+//                                                                           continue;
+//                    if (autoPortFastFeature
+//                        && iofSwitch.isFastPort(ofp.getPortNumber()))
+//                                                                     continue;
+//
+//                    // sends forward LLDP only non-fastports.
+//                    sendDiscoveryMessage(sw, ofp.getPortNumber(), true,
+//                                         false);
+//
+//                    // If the switch port is not already in the maintenance
+//                    // queue, add it.
+//                    NodePortTuple npt = new NodePortTuple(
+//                                                          sw,
+//                                                          ofp.getPortNumber());
+//                    addToMaintenanceQueue(npt);
+//                }
+//            }
+//        }
+//    }
 
     protected UpdateOperation getUpdateOperation(int srcPortState,
                                                  int dstPortState) {
@@ -1622,20 +1622,20 @@ public class LinkDiscoveryManager implements IOFMessageListener,
             ImmutablePort port,
             IOFSwitch.PortChangeType type) {
 
-        switch (type) {
-        case UP:
-            processNewPort(switchId, port.getPortNumber());
-            break;
-        case DELETE: case DOWN:
-            handlePortDown(switchId, port.getPortNumber());
-            break;
-        case OTHER_UPDATE: case ADD:
-            // This is something other than port add or delete.
-            // Topology does not worry about this.
-            // If for some reason the port features change, which
-            // we may have to react.
-            break;
-        }
+//        switch (type) {
+//        case UP:
+//            processNewPort(switchId, port.getPortNumber());
+//            break;
+//        case DELETE: case DOWN:
+//            handlePortDown(switchId, port.getPortNumber());
+//            break;
+//        case OTHER_UPDATE: case ADD:
+//            // This is something other than port add or delete.
+//            // Topology does not worry about this.
+//            // If for some reason the port features change, which
+//            // we may have to react.
+//            break;
+//        }
     }
 
     @Override
@@ -1681,11 +1681,11 @@ public class LinkDiscoveryManager implements IOFMessageListener,
     @Override
     public void switchActivated(long switchId) {
         IOFSwitch sw = floodlightProvider.getSwitch(switchId);
-        if (sw.getEnabledPortNumbers() != null) {
-            for (Short p : sw.getEnabledPortNumbers()) {
-                processNewPort(sw.getId(), p);
-            }
-        }
+//        if (sw.getEnabledPortNumbers() != null) {
+//            for (Short p : sw.getEnabledPortNumbers()) {
+//                processNewPort(sw.getId(), p);
+//            }
+//        }
         LDUpdate update = new LDUpdate(sw.getId(), null,
                                        UpdateOperation.SWITCH_UPDATED);
         updates.add(update);
@@ -2082,8 +2082,8 @@ public class LinkDiscoveryManager implements IOFMessageListener,
 
         // Setup the BDDP task. It is invoked whenever switch port tuples
         // are added to the quarantine list.
-        bddpTask = new SingletonTask(ses, new QuarantineWorker());
-        bddpTask.reschedule(BDDP_TASK_INTERVAL, TimeUnit.MILLISECONDS);
+        // bddpTask = new SingletonTask(ses, new QuarantineWorker());
+        // bddpTask.reschedule(BDDP_TASK_INTERVAL, TimeUnit.MILLISECONDS);
 
         updatesThread = new Thread(new Runnable() {
             @Override

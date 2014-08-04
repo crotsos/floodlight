@@ -87,11 +87,11 @@ public class LinkDiscoveryManagerTest extends FloodlightTestCase {
         public boolean isSendLLDPsCalled = false;
         public boolean isClearLinksCalled = false;
 
-        @Override
-        protected void discoverOnAllPorts() {
-            isSendLLDPsCalled = true;
-            super.discoverOnAllPorts();
-        }
+//        @Override
+//        protected void discoverOnAllPorts() {
+//            isSendLLDPsCalled = true;
+//            super.discoverOnAllPorts();
+//        }
 
         public void reset() {
             isSendLLDPsCalled = false;
