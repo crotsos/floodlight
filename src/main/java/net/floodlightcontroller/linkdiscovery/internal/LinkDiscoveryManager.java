@@ -189,7 +189,7 @@ public class LinkDiscoveryManager implements IOFMessageListener,
                                                            .setValue(TLV_DIRECTION_VALUE_REVERSE);
 
     // Link discovery task details.
-    protected SingletonTask discoveryTask;
+    // protected SingletonTask discoveryTask;
     protected final int DISCOVERY_TASK_INTERVAL = 1;
     protected final int LINK_TIMEOUT = 35; // timeout as part of LLDP process.
     protected final int LLDP_TO_ALL_INTERVAL = 15; // 15 seconds.
@@ -2042,43 +2042,43 @@ public class LinkDiscoveryManager implements IOFMessageListener,
 
         ScheduledExecutorService ses = threadPool.getScheduledExecutor();
 
-        // To be started by the first switch connection
-        discoveryTask = new SingletonTask(ses, new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    discoverLinks();
-                } catch (StorageException e) {
-                    log.error("Storage exception in LLDP send timer; "
-                              + "terminating process", e);
-                    floodlightProvider.terminate();
-                } catch (Exception e) {
-                    log.error("Exception in LLDP send timer.", e);
-                } finally {
-                    if (!shuttingDown) {
-                        // null role implies HA mode is not enabled.
-                        if (role == null || role == Role.MASTER) {
-                            log.trace("Rescheduling discovery task as role = {}",
-                                      role);
-                            discoveryTask.reschedule(DISCOVERY_TASK_INTERVAL,
-                                                     TimeUnit.SECONDS);
-                        } else {
-                            log.trace("Stopped LLDP rescheduling due to role = {}.",
-                                      role);
-                        }
-                    }
-                }
-            }
-        });
+//        // To be started by the first switch connection
+//        discoveryTask = new SingletonTask(ses, new Runnable() {
+//            @Override
+//            public void run() {
+//                try {
+//                    discoverLinks();
+//                } catch (StorageException e) {
+//                    log.error("Storage exception in LLDP send timer; "
+//                              + "terminating process", e);
+//                    floodlightProvider.terminate();
+//                } catch (Exception e) {
+//                    log.error("Exception in LLDP send timer.", e);
+//                } finally {
+//                    if (!shuttingDown) {
+//                        // null role implies HA mode is not enabled.
+//                        if (role == null || role == Role.MASTER) {
+//                            log.trace("Rescheduling discovery task as role = {}",
+//                                      role);
+//                            discoveryTask.reschedule(DISCOVERY_TASK_INTERVAL,
+//                                                     TimeUnit.SECONDS);
+//                        } else {
+//                            log.trace("Stopped LLDP rescheduling due to role = {}.",
+//                                      role);
+//                        }
+//                    }
+//                }
+//            }
+//        });
 
-        // null role implies HA mode is not enabled.
-        if (role == null || role == Role.MASTER) {
-            log.trace("Setup: Rescheduling discovery task. role = {}", role);
-            discoveryTask.reschedule(DISCOVERY_TASK_INTERVAL,
-                                     TimeUnit.SECONDS);
-        } else {
-            log.trace("Setup: Not scheduling LLDP as role = {}.", role);
-        }
+//        // null role implies HA mode is not enabled.
+//        if (role == null || role == Role.MASTER) {
+//            log.trace("Setup: Rescheduling discovery task. role = {}", role);
+//            discoveryTask.reschedule(DISCOVERY_TASK_INTERVAL,
+//                                     TimeUnit.SECONDS);
+//        } else {
+//            log.trace("Setup: Not scheduling LLDP as role = {}.", role);
+//        }
 
         // Setup the BDDP task. It is invoked whenever switch port tuples
         // are added to the quarantine list.
@@ -2223,7 +2223,7 @@ public class LinkDiscoveryManager implements IOFMessageListener,
             clearAllLinks();
             readTopologyConfigFromStorage();
             log.debug("Role Change to Master: Rescheduling discovery task.");
-            discoveryTask.reschedule(1, TimeUnit.MICROSECONDS);
+            // discoveryTask.reschedule(1, TimeUnit.MICROSECONDS);
         }
 
         @Override
