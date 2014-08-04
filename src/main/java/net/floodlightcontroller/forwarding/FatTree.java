@@ -1,5 +1,5 @@
 /**
- * 
+ *
  */
 package net.floodlightcontroller.forwarding;
 
@@ -48,7 +48,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
     protected static Logger log = LoggerFactory.getLogger(FatTree.class);
 
 	/**
-	 * 
+	 *
 	 */
 	public FatTree() {
 		super();
@@ -59,7 +59,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 	 */
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
-		return null;		
+		return null;
 	}
 
 	/* (non-Javadoc)
@@ -119,46 +119,49 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 			IOFSwitch sw, OFPacketIn pi, IRoutingDecision decision,
 			FloodlightContext cntx) {
 		String[] dpid = sw.getStringId().split(":");
-		
+
 		int pod = Byte.parseByte(dpid[dpid.length - 2], 16);
 		int swid =Byte.parseByte(dpid[dpid.length - 1], 16);
-		
+
 		OFMatch m = new OFMatch();
 		m.loadFromPacket(pi.getPacketData(), pi.getInPort());
 		ArrayList<OFAction> act = new ArrayList<OFAction>();
-		
+
 		String ip[] = IPv4.fromIPv4Address(m.getNetworkDestination()).split("\\.");
 		byte dst_pod = Byte.parseByte(ip[1]), dst_swid = Byte.parseByte(ip[2]),
 				dst_host = Byte.parseByte(ip[3]);
-		
-		if (m.getDataLayerType() == 0x8942 || m.getDataLayerType() == 0x4289)
-			return Command.CONTINUE;
-		
+
+//        System.out.printf("received ethertype %x", m.getDataLayerType());
+        log.error("received ethertype {}", new Object[] {m.getDataLayerType()});
+		if (m.getDataLayerType() == 0x8942 || m.getDataLayerType() == 0x4289) {
+			return Command.STOP;
+        }
+
 		/* middle layer switches - pod = 0...3*/
 		if (pod >= 0 && pod < 4) {
-			
+
 			/* First layer switches */
 			if (swid == 1 || swid == 2) {
 				if (dst_pod == pod && swid == dst_swid) {
-					act.add(new OFActionDataLayerSource( 
-									new byte[] {(byte)0xfe, (byte)0xff, (byte)0xff, 
+					act.add(new OFActionDataLayerSource(
+									new byte[] {(byte)0xfe, (byte)0xff, (byte)0xff,
 											dst_pod, dst_swid, (byte)1}));
-					act.add(new OFActionDataLayerDestination( 
-							new byte[] {(byte)0xfe, (byte)0xff, (byte)0xff, 
+					act.add(new OFActionDataLayerDestination(
+							new byte[] {(byte)0xfe, (byte)0xff, (byte)0xff,
 									dst_pod, dst_swid, dst_host}));
 					act.add( new OFActionOutput((short)((int)dst_host - 1)));
-				} else 
+				} else
 					act.add( new OFActionOutput((short)3));
 
 			/* Second layer switches */
 			} else {
 				if (dst_pod == pod)
 					act.add( new OFActionOutput((short)((int)dst_swid)));
-				else 
+				else
 					act.add( new OFActionOutput((short)3));
 			}
 		// top layer switches - pod = 4
-		} else if (pod == 4) 
+		} else if (pod == 4)
 			act.add( new OFActionOutput((short)(dst_pod + 1)));
 
 		short length = (short)OFFlowMod.MINIMUM_LENGTH;
@@ -174,14 +177,14 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 			.setCommand(OFFlowMod.OFPFC_ADD)
 			.setMatch(m)
 			.setLengthU(length);
-			
+
 			try {
 				this.messageDamper.write(sw, fm, cntx);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 		}
-		
+
 		return Command.STOP;
 	}
 
@@ -190,15 +193,15 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 		// TODO Auto-generated method stub
 		OFMatch m = new OFMatch();
 		IOFSwitch sw = floodlightProvider.getSwitch(switchId);
-		
+
 		int length = (short)OFFlowMod.MINIMUM_LENGTH + OFActionOutput.MINIMUM_LENGTH;
 
 		ArrayList<OFAction> act = new ArrayList<OFAction>();
 		act.add( new OFActionOutput(org.openflow.protocol.OFPort.OFPP_LOCAL.getValue()));
-		
-		m.setWildcards(Wildcards.ofMatches(Wildcards.Flag.IN_PORT));	
+
+		m.setWildcards(Wildcards.ofMatches(Wildcards.Flag.IN_PORT));
 		m.setInputPort((short)5);
-		
+
 		OFMessage fm = (new OFFlowMod())
 				.setIdleTimeout((short) 0)
 				.setHardTimeout((short) 0)
@@ -214,13 +217,13 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
             log.error("Tried to write OFFlowMod to {} but failed: {}",
                     HexString.toHexString(sw.getId()), e.getMessage());
         }
-        
+
 		act = new ArrayList<OFAction>();
 		act.add( new OFActionOutput((short)5));
-		
-		m.setWildcards(Wildcards.ofMatches(Wildcards.Flag.IN_PORT));	
+
+		m.setWildcards(Wildcards.ofMatches(Wildcards.Flag.IN_PORT));
 		m.setInputPort(org.openflow.protocol.OFPort.OFPP_LOCAL.getValue());
-		
+
 		fm = (new OFFlowMod())
 				.setIdleTimeout((short) 0)
 				.setHardTimeout((short) 0)
@@ -228,7 +231,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 				.setBufferId(-1)
 				.setCommand(OFFlowMod.OFPFC_ADD)
 				.setMatch(m)
-				.setLengthU(length);    
+				.setLengthU(length);
 		try {
 			sw.write(fm, null);
 			sw.flush();
@@ -242,25 +245,25 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 	@Override
 	public void switchRemoved(long switchId) {
 		// TODO Auto-generated method stub
-		
+
 	}
 
 	@Override
 	public void switchActivated(long switchId) {
 		// TODO Auto-generated method stub
-		
+
 	}
 
 	@Override
 	public void switchPortChanged(long switchId, ImmutablePort port,
 			PortChangeType type) {
 		// TODO Auto-generated method stub
-		
+
 	}
 
 	@Override
 	public void switchChanged(long switchId) {
 		// TODO Auto-generated method stub
-		
+
 	}
 }
