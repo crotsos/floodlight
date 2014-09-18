@@ -76,8 +76,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 	 */
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleDependencies() {
-        Collection<Class<? extends IFloodlightService>> l =
-                new ArrayList<Class<? extends IFloodlightService>>();
+        Collection<Class<? extends IFloodlightService>> l = new ArrayList<Class<? extends IFloodlightService>>();
         l.add(IFloodlightProviderService.class);
         l.add(IDeviceService.class);
         l.add(IRoutingService.class);
@@ -131,7 +130,7 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 		byte dst_pod = Byte.parseByte(ip[1]), dst_swid = Byte.parseByte(ip[2]),
 				dst_host = Byte.parseByte(ip[3]);
 
-//        System.out.printf("received ethertype %x", m.getDataLayerType());
+        System.out.printf("received ethertype %x", m.getDataLayerType());
         log.error("received ethertype {}", new Object[] {m.getDataLayerType()});
 		if (m.getDataLayerType() == 0x8942 || m.getDataLayerType() == 0x4289) {
 			return Command.STOP;
@@ -150,15 +149,32 @@ public class FatTree extends ForwardingBase implements IFloodlightModule, IOFSwi
 							new byte[] {(byte)0xfe, (byte)0xff, (byte)0xff,
 									dst_pod, dst_swid, dst_host}));
 					act.add( new OFActionOutput((short)((int)dst_host - 1)));
-				} else
-					act.add( new OFActionOutput((short)3));
+				} else{
+                    //-------------------
+                    //   DIMOS UPDATE
+                    //-------------------
+                    if(dst_swid == 1)
+                        act.add( new OFActionOutput((short)3));
+                    else
+                        act.add( new OFActionOutput((short)4));
+                }
 
 			/* Second layer switches */
 			} else {
 				if (dst_pod == pod)
 					act.add( new OFActionOutput((short)((int)dst_swid)));
 				else
-					act.add( new OFActionOutput((short)3));
+                {
+                    //------------------
+                    //   DIMOS UPDATE
+                    //------------------
+                    if(dst_host == 2)
+                        act.add( new OFActionOutput((short)3));
+                    else
+                        act.add( new OFActionOutput((short)4));
+
+                }
+
 			}
 		// top layer switches - pod = 4
 		} else if (pod == 4)
